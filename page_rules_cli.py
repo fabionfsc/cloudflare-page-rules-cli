@@ -13,7 +13,7 @@ REDIRECT_STATUS_LABELS = {
     301: "301 - Permanent Redirect",
     302: "302 - Temporary Redirect",
 }
-HELP_EPILOG = """Exemplos:
+HELP_EPILOG = """Examples:
   python3 page_rules_cli.py zones
   python3 page_rules_cli.py zones --name-contains movida
   python3 page_rules_cli.py rules --zone-name example.com
@@ -22,24 +22,23 @@ HELP_EPILOG = """Exemplos:
   python3 page_rules_cli.py enable --zone-name example.com --rule-id <RULE_ID>
   python3 page_rules_cli.py disable --zone-name example.com --all
 
-Credenciais:
-  - o script aceita --api-token e --account-id
-  - também aceita CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID
-  - também carrega um arquivo .env automaticamente
+Credentials:
+  - the script accepts --api-token
+  - it also accepts CLOUDFLARE_API_TOKEN
+  - it also loads a .env file automatically
 """
-ZONES_EPILOG = """Exemplos:
+ZONES_EPILOG = """Examples:
   python3 page_rules_cli.py zones
   python3 page_rules_cli.py zones --name-contains razor
-  python3 page_rules_cli.py zones --account-id <ACCOUNT_ID>
 """
-RULES_EPILOG = """Exemplos:
+RULES_EPILOG = """Examples:
   python3 page_rules_cli.py rules --zone-name example.com
   python3 page_rules_cli.py rules --zone-id <ZONE_ID>
 """
-ENABLE_DISABLE_EPILOG = """Seleção de regras:
-  Informe exatamente uma opção entre --rule-id, --position ou --all.
+ENABLE_DISABLE_EPILOG = """Rule selection:
+  Provide exactly one of --rule-id, --position, or --all.
 
-Exemplos:
+Examples:
   python3 page_rules_cli.py enable --zone-name example.com --position 1
   python3 page_rules_cli.py disable --zone-name example.com --position 1,3
   python3 page_rules_cli.py enable --zone-name example.com --position 1 --position 3
@@ -88,40 +87,35 @@ def load_dotenv() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Gerencia Page Rules da Cloudflare por conta e zona.",
+        description="Manage Cloudflare Page Rules for zones accessible to an API token.",
         epilog=HELP_EPILOG,
         formatter_class=HelpFormatter,
     )
     parser.add_argument(
         "--api-token",
         default=os.getenv("CLOUDFLARE_API_TOKEN", "").strip(),
-        help="API token da Cloudflare. Também aceita CLOUDFLARE_API_TOKEN.",
-    )
-    parser.add_argument(
-        "--account-id",
-        default=os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip(),
-        help="Account ID da Cloudflare para filtrar zonas. Também aceita CLOUDFLARE_ACCOUNT_ID.",
+        help="Cloudflare API token. Also accepts CLOUDFLARE_API_TOKEN.",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     zones_parser = subparsers.add_parser(
         "zones",
-        help="Lista zonas acessíveis ao token.",
-        description="Lista as zonas acessíveis ao token atual.",
+        help="List zones accessible to the token.",
+        description="List the zones accessible to the current token.",
         epilog=ZONES_EPILOG,
         formatter_class=HelpFormatter,
     )
     zones_parser.add_argument(
         "--name-contains",
         default="",
-        help="Filtra zonas que contenham este texto.",
+        help="Filter zones whose name contains this text.",
     )
 
     rules_parser = subparsers.add_parser(
         "rules",
-        help="Lista as Page Rules de uma zona.",
-        description="Lista as Page Rules de uma zona usando --zone-name ou --zone-id.",
+        help="List Page Rules for a zone.",
+        description="List Page Rules for a zone using --zone-name or --zone-id.",
         epilog=RULES_EPILOG,
         formatter_class=HelpFormatter,
     )
@@ -129,8 +123,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     enable_parser = subparsers.add_parser(
         "enable",
-        help="Ativa uma ou mais Page Rules.",
-        description="Ativa Page Rules de uma zona por Rule ID, Position ou --all.",
+        help="Enable one or more Page Rules.",
+        description="Enable Page Rules in a zone by Rule ID, Position, or --all.",
         epilog=ENABLE_DISABLE_EPILOG,
         formatter_class=HelpFormatter,
     )
@@ -139,8 +133,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     disable_parser = subparsers.add_parser(
         "disable",
-        help="Desativa uma ou mais Page Rules.",
-        description="Desativa Page Rules de uma zona por Rule ID, Position ou --all.",
+        help="Disable one or more Page Rules.",
+        description="Disable Page Rules in a zone by Rule ID, Position, or --all.",
         epilog=ENABLE_DISABLE_EPILOG,
         formatter_class=HelpFormatter,
     )
@@ -151,8 +145,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def add_zone_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--zone-id", default="", help="Zone ID. Use quando você já souber o identificador da zona.")
-    parser.add_argument("--zone-name", default="", help="Nome da zona. Exemplo: example.com")
+    parser.add_argument("--zone-id", default="", help="Zone ID. Use this when you already know the zone identifier.")
+    parser.add_argument("--zone-name", default="", help="Zone name. Example: example.com")
 
 
 def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
@@ -160,19 +154,19 @@ def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
         "--rule-id",
         action="append",
         default=[],
-        help="ID da Page Rule. Aceita múltiplos valores via vírgula ou repetindo a flag.",
+        help="Page Rule ID. Accepts multiple values via commas or repeated flags.",
     )
     parser.add_argument(
         "--position",
         action="append",
         default=[],
-        help="Position exibida na listagem. Aceita múltiplos valores via vírgula ou repetindo a flag.",
+        help="Position shown in the rules listing. Accepts multiple values via commas or repeated flags.",
     )
     parser.add_argument(
         "--all",
         action="store_true",
         dest="all_rules",
-        help="Aplica a alteração a todas as Page Rules da zona.",
+        help="Apply the change to all Page Rules in the zone.",
     )
 
 
@@ -201,14 +195,14 @@ def api_request(client: httpx.Client, method: str, path: str, **kwargs: Any) -> 
     if not payload.get("success"):
         errors = payload.get("errors") or []
         details = "; ".join(
-            f"{item.get('code', 'erro')}: {item.get('message', 'sem mensagem')}"
+            f"{item.get('code', 'error')}: {item.get('message', 'no message')}"
             for item in errors
-        ) or "Resposta sem sucesso da Cloudflare."
+        ) or "Cloudflare returned an unsuccessful response."
         raise CloudflareAPIError(details)
     return payload.get("result")
 
 
-def list_zones(client: httpx.Client, account_id: str = "", name_contains: str = "") -> list[dict[str, Any]]:
+def list_zones(client: httpx.Client, name_contains: str = "") -> list[dict[str, Any]]:
     zones: list[dict[str, Any]] = []
     page = 1
     while True:
@@ -218,8 +212,6 @@ def list_zones(client: httpx.Client, account_id: str = "", name_contains: str = 
             "order": "name",
             "direction": "asc",
         }
-        if account_id.strip():
-            params["account.id"] = account_id.strip()
         result = api_request(
             client,
             "GET",
@@ -239,20 +231,18 @@ def list_zones(client: httpx.Client, account_id: str = "", name_contains: str = 
     return zones
 
 
-def resolve_zone(client: httpx.Client, account_id: str, zone_id: str, zone_name: str) -> dict[str, Any]:
+def resolve_zone(client: httpx.Client, zone_id: str, zone_name: str) -> dict[str, Any]:
     if zone_id.strip():
         result = api_request(client, "GET", f"/zones/{zone_id.strip()}")
         return {"id": result["id"], "name": result["name"]}
 
-    name = require_value(zone_name, "Informe --zone-id ou --zone-name.")
-    zones = list_zones(client, account_id)
+    name = require_value(zone_name, "Provide --zone-id or --zone-name.")
+    zones = list_zones(client)
     matches = [zone for zone in zones if (zone.get("name") or "").strip().lower() == name.lower()]
     if not matches:
-        if account_id.strip():
-            raise SystemExit(f"Zona '{name}' não encontrada na conta {account_id}.")
-        raise SystemExit(f"Zona '{name}' não encontrada entre as zonas acessíveis ao token.")
+        raise SystemExit(f"Zone '{name}' was not found among the zones accessible to the token.")
     if len(matches) > 1:
-        raise SystemExit(f"Mais de uma zona com nome '{name}' foi encontrada. Use --zone-id ou informe --account-id.")
+        raise SystemExit(f"More than one zone named '{name}' was found. Use --zone-id.")
     zone = matches[0]
     return {"id": zone["id"], "name": zone["name"]}
 
@@ -292,7 +282,7 @@ def parse_position_arguments(values: list[str]) -> list[int]:
         try:
             positions.append(int(item))
         except ValueError as exc:
-            raise SystemExit(f"Position inválida: '{item}'. Use números inteiros.") from exc
+            raise SystemExit(f"Invalid position: '{item}'. Use integers.") from exc
     return positions
 
 
@@ -306,10 +296,10 @@ def resolve_rule_selection(
     normalized_positions = parse_position_arguments([str(position) for position in positions])
     selectors = sum([bool(normalized_rule_ids), bool(normalized_positions), bool(all_rules)])
     if selectors != 1:
-        raise SystemExit("Informe exatamente uma opção entre --rule-id, --position ou --all.")
+        raise SystemExit("Provide exactly one of --rule-id, --position, or --all.")
 
     if not rules:
-        raise SystemExit("Nenhuma Page Rule encontrada na zona.")
+        raise SystemExit("No Page Rules were found in the zone.")
 
     ordered_rules = order_rules_for_display(rules)
     positions_by_id = {
@@ -333,7 +323,7 @@ def resolve_rule_selection(
         }
         missing_rule_ids = [rule_id for rule_id in unique_rule_ids if rule_id not in rules_by_id]
         if missing_rule_ids:
-            raise SystemExit(f"Page Rule(s) não encontrada(s) na zona: {', '.join(missing_rule_ids)}.")
+            raise SystemExit(f"Page Rule(s) not found in the zone: {', '.join(missing_rule_ids)}.")
         selected_rules = [with_position(rules_by_id[rule_id]) for rule_id in unique_rule_ids]
         return order_rules_for_display(selected_rules)
 
@@ -341,8 +331,8 @@ def resolve_rule_selection(
     invalid_positions = [str(position) for position in unique_positions if position <= 0 or position > len(ordered_rules)]
     if invalid_positions:
         raise SystemExit(
-            f"Position(s) inválida(s): {', '.join(invalid_positions)}. "
-            f"Total de regras na listagem: {len(ordered_rules)}."
+            f"Invalid position(s): {', '.join(invalid_positions)}. "
+            f"Total rules in the listing: {len(ordered_rules)}."
         )
     selected_rules = [with_position(ordered_rules[position - 1]) for position in unique_positions]
     return order_rules_for_display(selected_rules)
@@ -419,16 +409,16 @@ def format_rule_descriptions(rule: dict[str, Any]) -> list[str]:
 
 def print_zones(zones: list[dict[str, Any]]) -> None:
     if not zones:
-        print("Nenhuma zona encontrada.")
+        print("No zones found.")
         return
-    print(f"{'ZONE ID':<36} {'STATUS':<10} NOME")
+    print(f"{'ZONE ID':<36} {'STATUS':<10} NAME")
     for zone in zones:
         print(f"{zone.get('id', ''):<36} {zone.get('status', ''):<10} {zone.get('name', '')}")
 
 
 def print_rules(rules: list[dict[str, Any]]) -> None:
     if not rules:
-        print("Nenhuma Page Rule encontrada.")
+        print("No Page Rules found.")
         return
     ordered_rules = order_rules_for_display(rules)
     for fallback_position, rule in enumerate(ordered_rules, start=1):
@@ -448,19 +438,18 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    api_token = require_value(args.api_token, "Informe --api-token ou defina CLOUDFLARE_API_TOKEN.")
-    account_id = args.account_id.strip()
+    api_token = require_value(args.api_token, "Provide --api-token or set CLOUDFLARE_API_TOKEN.")
 
     try:
         with make_client(api_token) as client:
             if args.command == "zones":
-                print_zones(list_zones(client, account_id, args.name_contains))
+                print_zones(list_zones(client, args.name_contains))
                 return 0
 
-            zone = resolve_zone(client, account_id, args.zone_id, args.zone_name)
+            zone = resolve_zone(client, args.zone_id, args.zone_name)
 
             if args.command == "rules":
-                print(f"Zona: {zone['name']} ({zone['id']})")
+                print(f"Zone: {zone['name']} ({zone['id']})")
                 print_rules(list_page_rules(client, zone["id"]))
                 return 0
 
@@ -484,18 +473,18 @@ def main() -> int:
             for updated_rule in updated_rules:
                 updated_rule["_display_position"] = selected_positions.get((updated_rule.get("id") or "").strip())
 
-            print(f"Zona: {zone['name']} ({zone['id']})")
+            print(f"Zone: {zone['name']} ({zone['id']})")
             if len(updated_rules) == 1:
-                print("Page Rule atualizada com sucesso:")
+                print("Page Rule updated successfully:")
             else:
-                print(f"Page Rules atualizadas com sucesso: {len(updated_rules)}")
+                print(f"Page Rules updated successfully: {len(updated_rules)}")
             print_rules(updated_rules)
             return 0
     except httpx.HTTPStatusError as exc:
-        print(f"Erro HTTP da Cloudflare: {exc.response.status_code} {exc.response.text}", file=sys.stderr)
+        print(f"Cloudflare HTTP error: {exc.response.status_code} {exc.response.text}", file=sys.stderr)
         return 1
     except CloudflareAPIError as exc:
-        print(f"Erro da API Cloudflare: {exc}", file=sys.stderr)
+        print(f"Cloudflare API error: {exc}", file=sys.stderr)
         return 1
 
 

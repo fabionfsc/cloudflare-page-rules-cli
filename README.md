@@ -1,6 +1,6 @@
 # Page Rules CLI
 
-Python CLI for listing, enabling, and disabling Cloudflare `Page Rules` by zone.
+Python CLI for listing, enabling, and disabling Cloudflare `Page Rules` for zones accessible to a given API token.
 
 ## Overview
 
@@ -54,11 +54,6 @@ Recommended token scope:
 - `Zone Resources - Include: All zones from an account`
 - or restrict the token to specific zones when appropriate
 
-Notes:
-
-- in some API references, `Page Rules Edit` may appear as `Page Rules Write`
-- prefer the smallest scope that matches your operational need
-
 ## Configuration
 
 The script accepts credentials from:
@@ -70,9 +65,6 @@ The script accepts credentials from:
 Supported variables:
 
 - `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-
-`CLOUDFLARE_ACCOUNT_ID` is optional.
 
 ### `.env` file
 
@@ -80,7 +72,6 @@ Create a `.env` file in the project root:
 
 ```dotenv
 CLOUDFLARE_API_TOKEN="your_api_token_here"
-CLOUDFLARE_ACCOUNT_ID=""
 ```
 
 ### Environment variables
@@ -89,13 +80,7 @@ Or define the variables in your shell or container:
 
 ```bash
 export CLOUDFLARE_API_TOKEN="your_api_token_here"
-export CLOUDFLARE_ACCOUNT_ID=""
 ```
-
-Notes:
-
-- the script uses `CLOUDFLARE_API_TOKEN`, not `CLOUDFLARE_API_KEY`
-- the `.env` file is loaded automatically
 
 ## Usage
 
@@ -117,14 +102,13 @@ python3 page_rules_cli.py disable --help
 
 ### `zones`
 
-Lists the zones accessible to the token. Supports optional name filtering and optional `account_id` filtering.
+Lists the zones accessible to the token. Supports optional name filtering.
 
 Examples:
 
 ```bash
 python3 page_rules_cli.py zones
 python3 page_rules_cli.py zones --name-contains example
-python3 page_rules_cli.py zones --account-id <ACCOUNT_ID>
 ```
 
 ### `rules`
