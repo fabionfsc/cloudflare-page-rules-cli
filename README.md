@@ -136,7 +136,6 @@ Rules are selected by the `Position` shown in the `rules` output.
 python3 page_rules_cli.py enable --zone-name example.com --position 1
 python3 page_rules_cli.py disable --zone-name example.com --position 1
 python3 page_rules_cli.py enable --zone-name example.com --position 1,3
-python3 page_rules_cli.py disable --zone-name example.com --position 1 --position 3
 ```
 
 #### Select with `--all`

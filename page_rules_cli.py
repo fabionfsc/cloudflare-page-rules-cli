@@ -37,7 +37,6 @@ ENABLE_DISABLE_EPILOG = """Rule selection:
 Examples:
   python3 page_rules_cli.py enable --zone-name example.com --position 1
   python3 page_rules_cli.py disable --zone-name example.com --position 1,3
-  python3 page_rules_cli.py enable --zone-name example.com --position 1 --position 3
   python3 page_rules_cli.py enable --zone-name example.com --all
 """
 
@@ -141,9 +140,8 @@ def add_zone_arguments(parser: argparse.ArgumentParser) -> None:
 def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--position",
-        action="append",
-        default=[],
-        help="Position shown in the rules listing. Accepts multiple values via commas or repeated flags.",
+        default="",
+        help="Position shown in the rules listing. Use comma-separated values for multiple positions.",
     )
     parser.add_argument(
         "--all",
@@ -251,9 +249,9 @@ def parse_csv_arguments(values: list[str]) -> list[str]:
     return parsed_values
 
 
-def parse_position_arguments(values: list[str]) -> list[int]:
+def parse_position_arguments(value: str) -> list[int]:
     positions: list[int] = []
-    for item in parse_csv_arguments(values):
+    for item in parse_csv_arguments([value]):
         try:
             positions.append(int(item))
         except ValueError as exc:
@@ -263,10 +261,10 @@ def parse_position_arguments(values: list[str]) -> list[int]:
 
 def resolve_rule_selection(
     rules: list[dict[str, Any]],
-    positions: list[int],
+    positions: str,
     all_rules: bool,
 ) -> list[dict[str, Any]]:
-    normalized_positions = parse_position_arguments([str(position) for position in positions])
+    normalized_positions = parse_position_arguments(positions)
     selectors = sum([bool(normalized_positions), bool(all_rules)])
     if selectors != 1:
         raise SystemExit("Provide exactly one of --position or --all.")
