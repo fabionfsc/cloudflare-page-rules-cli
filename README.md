@@ -1,4 +1,4 @@
-# Page Rules CLI
+# Cloudflare Page Rules CLI
 
 Python CLI for listing, enabling, and disabling Cloudflare `Page Rules` for zones accessible to a given API token.
 
@@ -168,9 +168,3 @@ URL: app.example.com/*
 Description: Forwarding URL (Status Code: 302 - Temporary Redirect, Url: https://destination.example.com/)
 Action: Enabled
 ```
-
-## Notes
-
-- `Position` is intended for manual operation based on the current rules listing
-- for multi-rule operations, the script prints the updated rules at the end
-- in containers, you can use runtime environment variables or mount a `.env` file
