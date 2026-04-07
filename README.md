@@ -1,32 +1,32 @@
 # Page Rules CLI
 
-CLI em Python para listar, ativar e desativar `Page Rules` da Cloudflare por zona.
+Python CLI for listing, enabling, and disabling Cloudflare `Page Rules` by zone.
 
-## Visão geral
+## Overview
 
-O script permite:
+The script can:
 
-- listar zonas acessíveis ao token
-- listar `Page Rules` de uma zona
-- ativar ou desativar regras por `Rule ID`
-- ativar ou desativar regras por `Position`
-- aplicar a alteração a todas as regras da zona com `--all`
-- alterar múltiplas regras no mesmo comando
+- list zones accessible to the token
+- list `Page Rules` for a zone
+- enable or disable rules by `Rule ID`
+- enable or disable rules by `Position`
+- apply changes to all rules in a zone with `--all`
+- update multiple rules in a single command
 
-## Requisitos
+## Requirements
 
 - Python 3
-- biblioteca `httpx`
+- `httpx`
 
-## Instalação
+## Installation
 
-Em ambientes onde `pip` pode instalar normalmente:
+On systems where `pip` can install packages normally:
 
 ```bash
 python3 -m pip install httpx
 ```
 
-Em Debian/Ubuntu com `externally-managed-environment`, use `venv`:
+On Debian/Ubuntu systems with `externally-managed-environment`, use a virtual environment:
 
 ```bash
 python3 -m venv .venv
@@ -34,73 +34,73 @@ source .venv/bin/activate
 python -m pip install httpx
 ```
 
-Se necessário:
+If needed:
 
 ```bash
 sudo apt update
 sudo apt install python3-venv
 ```
 
-## Permissões do token
+## Token Permissions
 
-Permissões recomendadas:
+Recommended permissions:
 
 - `Zone Read`
 - `Page Rules Read`
 - `Page Rules Edit`
 
-Observação:
+Notes:
 
-- em algumas telas da Cloudflare, `Page Rules Edit` pode aparecer como `Page Rules Write`
-- restrinja o token apenas às zonas que serão administradas
+- in some Cloudflare screens, `Page Rules Edit` may appear as `Page Rules Write`
+- restrict the token to only the zones you intend to manage
 
-## Configuração
+## Configuration
 
-O script aceita credenciais por:
+The script accepts credentials from:
 
-1. argumentos de linha de comando
-2. variáveis de ambiente
-3. arquivo `.env`
+1. command-line arguments
+2. environment variables
+3. a `.env` file
 
-Variáveis suportadas:
+Supported variables:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-`CLOUDFLARE_ACCOUNT_ID` é opcional.
+`CLOUDFLARE_ACCOUNT_ID` is optional.
 
-### Arquivo `.env`
+### `.env` file
 
-Crie um arquivo `.env` na raiz do projeto:
+Create a `.env` file in the project root:
 
 ```dotenv
-CLOUDFLARE_API_TOKEN="seu_api_token_aqui"
+CLOUDFLARE_API_TOKEN="your_api_token_here"
 CLOUDFLARE_ACCOUNT_ID=""
 ```
 
-### Variáveis de ambiente
+### Environment variables
 
-Ou defina as variáveis no shell ou no container:
+Or define the variables in your shell or container:
 
 ```bash
-export CLOUDFLARE_API_TOKEN="seu_api_token_aqui"
+export CLOUDFLARE_API_TOKEN="your_api_token_here"
 export CLOUDFLARE_ACCOUNT_ID=""
 ```
 
-Observação:
+Notes:
 
-- o script usa `CLOUDFLARE_API_TOKEN`, não `CLOUDFLARE_API_KEY`
-- o arquivo `.env` é carregado automaticamente
+- the script uses `CLOUDFLARE_API_TOKEN`, not `CLOUDFLARE_API_KEY`
+- the `.env` file is loaded automatically
 
-## Uso
+## Usage
 
-Sintaxe geral:
+General syntax:
 
 ```bash
-python3 page_rules_cli.py <zones|rules|enable|disable> [opções]
+python3 page_rules_cli.py <zones|rules|enable|disable> [options]
 ```
 
-Ajuda no terminal:
+Terminal help:
 
 ```bash
 python3 page_rules_cli.py --help
@@ -108,13 +108,13 @@ python3 page_rules_cli.py enable --help
 python3 page_rules_cli.py disable --help
 ```
 
-## Comandos
+## Commands
 
 ### `zones`
 
-Lista as zonas acessíveis ao token. Pode ser usado com filtro de nome e, opcionalmente, com `account_id`.
+Lists the zones accessible to the token. Supports optional name filtering and optional `account_id` filtering.
 
-Exemplos:
+Examples:
 
 ```bash
 python3 page_rules_cli.py zones
@@ -124,28 +124,28 @@ python3 page_rules_cli.py zones --account-id <ACCOUNT_ID>
 
 ### `rules`
 
-Lista as `Page Rules` de uma zona usando `--zone-name` ou `--zone-id`.
+Lists the `Page Rules` for a zone using either `--zone-name` or `--zone-id`.
 
-Exemplos:
+Examples:
 
 ```bash
 python3 page_rules_cli.py rules --zone-name example.com
 python3 page_rules_cli.py rules --zone-id <ZONE_ID>
 ```
 
-### `enable` e `disable`
+### `enable` and `disable`
 
-Ativam ou desativam `Page Rules` de uma zona.
+Enable or disable `Page Rules` for a zone.
 
-Para esses comandos, informe exatamente uma forma de seleção:
+For these commands, provide exactly one selection mode:
 
 - `--rule-id`
 - `--position`
 - `--all`
 
-#### Seleção por `Rule ID`
+#### Select by `Rule ID`
 
-Mais adequada para automação e uso estável.
+Best option for automation and stable targeting.
 
 ```bash
 python3 page_rules_cli.py enable --zone-name example.com --rule-id <RULE_ID>
@@ -154,9 +154,9 @@ python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID_1>,
 python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID_1> --rule-id <RULE_ID_2>
 ```
 
-#### Seleção por `Position`
+#### Select by `Position`
 
-Mais adequada para operação manual com base na listagem exibida pelo comando `rules`.
+Best option for manual operation based on the order shown by the `rules` command.
 
 ```bash
 python3 page_rules_cli.py enable --zone-name example.com --position 1
@@ -165,18 +165,18 @@ python3 page_rules_cli.py enable --zone-name example.com --position 1,3
 python3 page_rules_cli.py disable --zone-name example.com --position 1 --position 3
 ```
 
-#### Seleção com `--all`
+#### Select with `--all`
 
-Aplica a alteração a todas as `Page Rules` da zona.
+Applies the change to all `Page Rules` in the zone.
 
 ```bash
 python3 page_rules_cli.py enable --zone-name example.com --all
 python3 page_rules_cli.py disable --zone-name example.com --all
 ```
 
-## Saída
+## Output
 
-Na listagem de regras, o script exibe:
+When listing rules, the script shows:
 
 - `Position`
 - `Rule ID`
@@ -184,20 +184,20 @@ Na listagem de regras, o script exibe:
 - `Description`
 - `Action`
 
-Exemplo:
+Example:
 
 ```text
-Zona: example.com (ZONE_ID)
+Zone: example.com (ZONE_ID)
 Position: 1
 Rule ID: abc123
 URL: app.example.com/*
-Description: Forwarding URL (Status Code: 302 - Temporary Redirect, Url: https://destino.example.com/)
+Description: Forwarding URL (Status Code: 302 - Temporary Redirect, Url: https://destination.example.com/)
 Action: Enabled
 ```
 
-## Observações
+## Notes
 
-- `Position` é conveniente para uso manual, mas não é um identificador estável como `Rule ID`
-- para automação, prefira `--rule-id`
-- em operações com múltiplas regras, o script imprime as regras atualizadas ao final
-- em container, você pode usar variáveis de ambiente do runtime ou montar um arquivo `.env`
+- `Position` is convenient for manual use, but it is not as stable as `Rule ID`
+- for automation, prefer `--rule-id`
+- for multi-rule operations, the script prints the updated rules at the end
+- in containers, you can use runtime environment variables or mount a `.env` file
