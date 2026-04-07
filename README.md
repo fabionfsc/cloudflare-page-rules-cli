@@ -45,14 +45,19 @@ sudo apt install python3-venv
 
 Recommended permissions:
 
-- `Zone Read`
-- `Page Rules Read`
-- `Page Rules Edit`
+- `Zone - Zone: Read`
+- `Zone - Page Rules: Read`
+- `Zone - Page Rules: Edit`
+
+Recommended token scope:
+
+- `Zone Resources - Include: All zones from an account`
+- or restrict the token to specific zones when appropriate
 
 Notes:
 
-- in some Cloudflare screens, `Page Rules Edit` may appear as `Page Rules Write`
-- restrict the token to only the zones you intend to manage
+- in some API references, `Page Rules Edit` may appear as `Page Rules Write`
+- prefer the smallest scope that matches your operational need
 
 ## Configuration
 
