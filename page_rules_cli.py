@@ -15,11 +15,9 @@ REDIRECT_STATUS_LABELS = {
 }
 HELP_EPILOG = """Examples:
   python3 page_rules_cli.py zones
-  python3 page_rules_cli.py zones --name-contains movida
   python3 page_rules_cli.py rules --zone-name example.com
   python3 page_rules_cli.py enable --zone-name example.com --position 1
   python3 page_rules_cli.py disable --zone-name example.com --position 1,3
-  python3 page_rules_cli.py enable --zone-name example.com --rule-id <RULE_ID>
   python3 page_rules_cli.py disable --zone-name example.com --all
 
 Credentials:
@@ -29,20 +27,17 @@ Credentials:
 """
 ZONES_EPILOG = """Examples:
   python3 page_rules_cli.py zones
-  python3 page_rules_cli.py zones --name-contains razor
 """
 RULES_EPILOG = """Examples:
   python3 page_rules_cli.py rules --zone-name example.com
-  python3 page_rules_cli.py rules --zone-id <ZONE_ID>
 """
 ENABLE_DISABLE_EPILOG = """Rule selection:
-  Provide exactly one of --rule-id, --position, or --all.
+  Provide exactly one of --position or --all.
 
 Examples:
   python3 page_rules_cli.py enable --zone-name example.com --position 1
   python3 page_rules_cli.py disable --zone-name example.com --position 1,3
   python3 page_rules_cli.py enable --zone-name example.com --position 1 --position 3
-  python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID_1>,<RULE_ID_2>
   python3 page_rules_cli.py enable --zone-name example.com --all
 """
 
@@ -106,16 +101,11 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=ZONES_EPILOG,
         formatter_class=HelpFormatter,
     )
-    zones_parser.add_argument(
-        "--name-contains",
-        default="",
-        help="Filter zones whose name contains this text.",
-    )
 
     rules_parser = subparsers.add_parser(
         "rules",
         help="List Page Rules for a zone.",
-        description="List Page Rules for a zone using --zone-name or --zone-id.",
+        description="List Page Rules for a zone using --zone-name.",
         epilog=RULES_EPILOG,
         formatter_class=HelpFormatter,
     )
@@ -124,7 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
     enable_parser = subparsers.add_parser(
         "enable",
         help="Enable one or more Page Rules.",
-        description="Enable Page Rules in a zone by Rule ID, Position, or --all.",
+        description="Enable Page Rules in a zone by Position or --all.",
         epilog=ENABLE_DISABLE_EPILOG,
         formatter_class=HelpFormatter,
     )
@@ -134,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
     disable_parser = subparsers.add_parser(
         "disable",
         help="Disable one or more Page Rules.",
-        description="Disable Page Rules in a zone by Rule ID, Position, or --all.",
+        description="Disable Page Rules in a zone by Position or --all.",
         epilog=ENABLE_DISABLE_EPILOG,
         formatter_class=HelpFormatter,
     )
@@ -145,17 +135,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def add_zone_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--zone-id", default="", help="Zone ID. Use this when you already know the zone identifier.")
-    parser.add_argument("--zone-name", default="", help="Zone name. Example: example.com")
+    parser.add_argument("--zone-name", required=True, help="Zone name. Example: example.com")
 
 
 def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--rule-id",
-        action="append",
-        default=[],
-        help="Page Rule ID. Accepts multiple values via commas or repeated flags.",
-    )
     parser.add_argument(
         "--position",
         action="append",
@@ -202,7 +185,7 @@ def api_request(client: httpx.Client, method: str, path: str, **kwargs: Any) -> 
     return payload.get("result")
 
 
-def list_zones(client: httpx.Client, name_contains: str = "") -> list[dict[str, Any]]:
+def list_zones(client: httpx.Client) -> list[dict[str, Any]]:
     zones: list[dict[str, Any]] = []
     page = 1
     while True:
@@ -224,25 +207,17 @@ def list_zones(client: httpx.Client, name_contains: str = "") -> list[dict[str, 
         if len(result) < 50:
             break
         page += 1
-
-    if name_contains:
-        term = name_contains.strip().lower()
-        zones = [zone for zone in zones if term in (zone.get("name") or "").lower()]
     return zones
 
 
-def resolve_zone(client: httpx.Client, zone_id: str, zone_name: str) -> dict[str, Any]:
-    if zone_id.strip():
-        result = api_request(client, "GET", f"/zones/{zone_id.strip()}")
-        return {"id": result["id"], "name": result["name"]}
-
-    name = require_value(zone_name, "Provide --zone-id or --zone-name.")
+def resolve_zone(client: httpx.Client, zone_name: str) -> dict[str, Any]:
+    name = require_value(zone_name, "Provide --zone-name.")
     zones = list_zones(client)
     matches = [zone for zone in zones if (zone.get("name") or "").strip().lower() == name.lower()]
     if not matches:
         raise SystemExit(f"Zone '{name}' was not found among the zones accessible to the token.")
     if len(matches) > 1:
-        raise SystemExit(f"More than one zone named '{name}' was found. Use --zone-id.")
+        raise SystemExit(f"More than one zone named '{name}' was found.")
     zone = matches[0]
     return {"id": zone["id"], "name": zone["name"]}
 
@@ -288,15 +263,13 @@ def parse_position_arguments(values: list[str]) -> list[int]:
 
 def resolve_rule_selection(
     rules: list[dict[str, Any]],
-    rule_ids: list[str],
     positions: list[int],
     all_rules: bool,
 ) -> list[dict[str, Any]]:
-    normalized_rule_ids = parse_csv_arguments(rule_ids)
     normalized_positions = parse_position_arguments([str(position) for position in positions])
-    selectors = sum([bool(normalized_rule_ids), bool(normalized_positions), bool(all_rules)])
+    selectors = sum([bool(normalized_positions), bool(all_rules)])
     if selectors != 1:
-        raise SystemExit("Provide exactly one of --rule-id, --position, or --all.")
+        raise SystemExit("Provide exactly one of --position or --all.")
 
     if not rules:
         raise SystemExit("No Page Rules were found in the zone.")
@@ -314,18 +287,6 @@ def resolve_rule_selection(
 
     if all_rules:
         return [with_position(rule) for rule in ordered_rules]
-
-    if normalized_rule_ids:
-        unique_rule_ids = list(dict.fromkeys(normalized_rule_ids))
-        rules_by_id = {
-            (rule.get("id") or "").strip(): rule
-            for rule in rules
-        }
-        missing_rule_ids = [rule_id for rule_id in unique_rule_ids if rule_id not in rules_by_id]
-        if missing_rule_ids:
-            raise SystemExit(f"Page Rule(s) not found in the zone: {', '.join(missing_rule_ids)}.")
-        selected_rules = [with_position(rules_by_id[rule_id]) for rule_id in unique_rule_ids]
-        return order_rules_for_display(selected_rules)
 
     unique_positions = list(dict.fromkeys(normalized_positions))
     invalid_positions = [str(position) for position in unique_positions if position <= 0 or position > len(ordered_rules)]
@@ -443,10 +404,10 @@ def main() -> int:
     try:
         with make_client(api_token) as client:
             if args.command == "zones":
-                print_zones(list_zones(client, args.name_contains))
+                print_zones(list_zones(client))
                 return 0
 
-            zone = resolve_zone(client, args.zone_id, args.zone_name)
+            zone = resolve_zone(client, args.zone_name)
 
             if args.command == "rules":
                 print(f"Zone: {zone['name']} ({zone['id']})")
@@ -457,7 +418,6 @@ def main() -> int:
             rules = list_page_rules(client, zone["id"])
             selected_rules = resolve_rule_selection(
                 rules,
-                args.rule_id,
                 args.position,
                 args.all_rules,
             )

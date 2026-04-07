@@ -8,7 +8,6 @@ The script can:
 
 - list zones accessible to the token
 - list `Page Rules` for a zone
-- enable or disable rules by `Rule ID`
 - enable or disable rules by `Position`
 - apply changes to all rules in a zone with `--all`
 - update multiple rules in a single command
@@ -102,24 +101,22 @@ python3 page_rules_cli.py disable --help
 
 ### `zones`
 
-Lists the zones accessible to the token. Supports optional name filtering.
+Lists the zones accessible to the token.
 
 Examples:
 
 ```bash
 python3 page_rules_cli.py zones
-python3 page_rules_cli.py zones --name-contains example
 ```
 
 ### `rules`
 
-Lists the `Page Rules` for a zone using either `--zone-name` or `--zone-id`.
+Lists the `Page Rules` for a zone using `--zone-name`.
 
 Examples:
 
 ```bash
 python3 page_rules_cli.py rules --zone-name example.com
-python3 page_rules_cli.py rules --zone-id <ZONE_ID>
 ```
 
 ### `enable` and `disable`
@@ -128,24 +125,12 @@ Enable or disable `Page Rules` for a zone.
 
 For these commands, provide exactly one selection mode:
 
-- `--rule-id`
 - `--position`
 - `--all`
 
-#### Select by `Rule ID`
-
-Best option for automation and stable targeting.
-
-```bash
-python3 page_rules_cli.py enable --zone-name example.com --rule-id <RULE_ID>
-python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID>
-python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID_1>,<RULE_ID_2>
-python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID_1> --rule-id <RULE_ID_2>
-```
-
 #### Select by `Position`
 
-Best option for manual operation based on the order shown by the `rules` command.
+Rules are selected by the `Position` shown in the `rules` output.
 
 ```bash
 python3 page_rules_cli.py enable --zone-name example.com --position 1
@@ -186,7 +171,6 @@ Action: Enabled
 
 ## Notes
 
-- `Position` is convenient for manual use, but it is not as stable as `Rule ID`
-- for automation, prefer `--rule-id`
+- `Position` is intended for manual operation based on the current rules listing
 - for multi-rule operations, the script prints the updated rules at the end
 - in containers, you can use runtime environment variables or mount a `.env` file
