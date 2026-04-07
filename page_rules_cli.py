@@ -13,6 +13,43 @@ REDIRECT_STATUS_LABELS = {
     301: "301 - Permanent Redirect",
     302: "302 - Temporary Redirect",
 }
+HELP_EPILOG = """Exemplos:
+  python3 page_rules_cli.py zones
+  python3 page_rules_cli.py zones --name-contains movida
+  python3 page_rules_cli.py rules --zone-name example.com
+  python3 page_rules_cli.py enable --zone-name example.com --position 1
+  python3 page_rules_cli.py disable --zone-name example.com --position 1,3
+  python3 page_rules_cli.py enable --zone-name example.com --rule-id <RULE_ID>
+  python3 page_rules_cli.py disable --zone-name example.com --all
+
+Credenciais:
+  - o script aceita --api-token e --account-id
+  - também aceita CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID
+  - também carrega um arquivo .env automaticamente
+"""
+ZONES_EPILOG = """Exemplos:
+  python3 page_rules_cli.py zones
+  python3 page_rules_cli.py zones --name-contains razor
+  python3 page_rules_cli.py zones --account-id <ACCOUNT_ID>
+"""
+RULES_EPILOG = """Exemplos:
+  python3 page_rules_cli.py rules --zone-name example.com
+  python3 page_rules_cli.py rules --zone-id <ZONE_ID>
+"""
+ENABLE_DISABLE_EPILOG = """Seleção de regras:
+  Informe exatamente uma opção entre --rule-id, --position ou --all.
+
+Exemplos:
+  python3 page_rules_cli.py enable --zone-name example.com --position 1
+  python3 page_rules_cli.py disable --zone-name example.com --position 1,3
+  python3 page_rules_cli.py enable --zone-name example.com --position 1 --position 3
+  python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID_1>,<RULE_ID_2>
+  python3 page_rules_cli.py enable --zone-name example.com --all
+"""
+
+
+class HelpFormatter(argparse.RawTextHelpFormatter):
+    pass
 
 
 class CloudflareAPIError(RuntimeError):
@@ -51,7 +88,9 @@ def load_dotenv() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Gerencia Page Rules da Cloudflare por conta e zona."
+        description="Gerencia Page Rules da Cloudflare por conta e zona.",
+        epilog=HELP_EPILOG,
+        formatter_class=HelpFormatter,
     )
     parser.add_argument(
         "--api-token",
@@ -66,21 +105,45 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    zones_parser = subparsers.add_parser("zones", help="Lista zonas da conta.")
+    zones_parser = subparsers.add_parser(
+        "zones",
+        help="Lista zonas acessíveis ao token.",
+        description="Lista as zonas acessíveis ao token atual.",
+        epilog=ZONES_EPILOG,
+        formatter_class=HelpFormatter,
+    )
     zones_parser.add_argument(
         "--name-contains",
         default="",
         help="Filtra zonas que contenham este texto.",
     )
 
-    rules_parser = subparsers.add_parser("rules", help="Lista Page Rules da zona.")
+    rules_parser = subparsers.add_parser(
+        "rules",
+        help="Lista as Page Rules de uma zona.",
+        description="Lista as Page Rules de uma zona usando --zone-name ou --zone-id.",
+        epilog=RULES_EPILOG,
+        formatter_class=HelpFormatter,
+    )
     add_zone_arguments(rules_parser)
 
-    enable_parser = subparsers.add_parser("enable", help="Ativa uma Page Rule.")
+    enable_parser = subparsers.add_parser(
+        "enable",
+        help="Ativa uma ou mais Page Rules.",
+        description="Ativa Page Rules de uma zona por Rule ID, Position ou --all.",
+        epilog=ENABLE_DISABLE_EPILOG,
+        formatter_class=HelpFormatter,
+    )
     add_zone_arguments(enable_parser)
     add_rule_selector_arguments(enable_parser)
 
-    disable_parser = subparsers.add_parser("disable", help="Desativa uma Page Rule.")
+    disable_parser = subparsers.add_parser(
+        "disable",
+        help="Desativa uma ou mais Page Rules.",
+        description="Desativa Page Rules de uma zona por Rule ID, Position ou --all.",
+        epilog=ENABLE_DISABLE_EPILOG,
+        formatter_class=HelpFormatter,
+    )
     add_zone_arguments(disable_parser)
     add_rule_selector_arguments(disable_parser)
 
@@ -88,8 +151,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def add_zone_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--zone-id", default="", help="Zone ID.")
-    parser.add_argument("--zone-name", default="", help="Nome da zona.")
+    parser.add_argument("--zone-id", default="", help="Zone ID. Use quando você já souber o identificador da zona.")
+    parser.add_argument("--zone-name", default="", help="Nome da zona. Exemplo: example.com")
 
 
 def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
@@ -105,7 +168,12 @@ def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
         default=[],
         help="Position exibida na listagem. Aceita múltiplos valores via vírgula ou repetindo a flag.",
     )
-    parser.add_argument("--all", action="store_true", dest="all_rules", help="Aplica a todas as Page Rules da zona.")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="all_rules",
+        help="Aplica a alteração a todas as Page Rules da zona.",
+    )
 
 
 def require_value(value: str, message: str) -> str:

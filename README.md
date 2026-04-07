@@ -120,31 +120,31 @@ Ordem de precedência:
 
 Com `.env` preenchido, basta rodar os comandos normalmente:
 
-Listar zonas:
+Use `zones` para descobrir quais zonas o token consegue acessar:
 
 ```bash
 python3 page_rules_cli.py zones
 ```
 
-Listar zonas filtrando por nome:
+Use `--name-contains` para reduzir a saída quando você souber parte do nome da zona:
 
 ```bash
 python3 page_rules_cli.py zones --name-contains example
 ```
 
-Listar zonas filtrando por conta:
+Use `--account-id` quando quiser limitar a busca a uma conta específica:
 
 ```bash
 python3 page_rules_cli.py zones --account-id <ACCOUNT_ID>
 ```
 
-Listar `Page Rules` de uma zona:
+Use `rules` para listar as `Page Rules` de uma zona pelo nome:
 
 ```bash
 python3 page_rules_cli.py rules --zone-name example.com
 ```
 
-Também é possível usar `--zone-id` no lugar de `--zone-name`:
+Se você já tiver o identificador da zona, pode consultar direto com `--zone-id`:
 
 ```bash
 python3 page_rules_cli.py rules --zone-id <ZONE_ID>
@@ -162,44 +162,54 @@ As opções `--rule-id` e `--position` aceitam um ou vários valores.
 
 ### Por `Rule ID`
 
-Ativar uma regra:
+Use `--rule-id` quando você quiser alterar uma regra específica de forma estável:
 
 ```bash
 python3 page_rules_cli.py enable --zone-name example.com --rule-id <RULE_ID>
 ```
 
-Desativar uma regra:
+O mesmo vale para desativar uma regra específica:
 
 ```bash
 python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID>
 ```
 
-Desativar múltiplas regras:
+Você também pode alterar várias regras em lote informando múltiplos IDs separados por vírgula:
 
 ```bash
 python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID_1>,<RULE_ID_2>
+```
+
+Ou repetindo a mesma flag:
+
+```bash
 python3 page_rules_cli.py disable --zone-name example.com --rule-id <RULE_ID_1> --rule-id <RULE_ID_2>
 ```
 
 ### Por `Position`
 
-Ativar ou desativar uma regra pela posição exibida na listagem:
+Use `--position` quando estiver operando manualmente com base na ordem mostrada pelo comando `rules`:
 
 ```bash
 python3 page_rules_cli.py enable --zone-name example.com --position 1
 python3 page_rules_cli.py disable --zone-name example.com --position 1
 ```
 
-Ativar ou desativar múltiplas posições:
+Também é possível alterar várias posições de uma vez em uma única execução:
 
 ```bash
 python3 page_rules_cli.py enable --zone-name example.com --position 1,3
+```
+
+Ou repetindo a flag:
+
+```bash
 python3 page_rules_cli.py disable --zone-name example.com --position 1 --position 3
 ```
 
 ### Todas as regras da zona
 
-Aplicar a alteração a todas as `Page Rules` da zona:
+Use `--all` quando quiser aplicar a alteração a todas as `Page Rules` da zona:
 
 ```bash
 python3 page_rules_cli.py enable --zone-name example.com --all
