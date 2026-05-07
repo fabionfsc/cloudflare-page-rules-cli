@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
-from typing import Any
-
-import httpx
+from typing import Any, Optional
 
 
 API_BASE = "https://api.cloudflare.com/client/v4"
@@ -17,7 +19,9 @@ HELP_EPILOG = """Examples:
   python3 page_rules_cli.py zones
   python3 page_rules_cli.py rules --zone-name example.com
   python3 page_rules_cli.py enable --zone-name example.com --position 1
+  python3 page_rules_cli.py enable --zone-name example.com --rule-id RULE_ID
   python3 page_rules_cli.py disable --zone-name example.com --position 1,3
+  python3 page_rules_cli.py disable --zone-name example.com --rule-id RULE_ID_1,RULE_ID_2
   python3 page_rules_cli.py disable --zone-name example.com --all
 
 Credentials:
@@ -32,11 +36,13 @@ RULES_EPILOG = """Examples:
   python3 page_rules_cli.py rules --zone-name example.com
 """
 ENABLE_DISABLE_EPILOG = """Rule selection:
-  Provide exactly one of --position or --all.
+  Provide exactly one of --position, --rule-id, or --all.
 
 Examples:
   python3 page_rules_cli.py enable --zone-name example.com --position 1
   python3 page_rules_cli.py disable --zone-name example.com --position 1,3
+  python3 page_rules_cli.py enable --zone-name example.com --rule-id RULE_ID
+  python3 page_rules_cli.py disable --zone-name example.com --rule-id RULE_ID_1,RULE_ID_2
   python3 page_rules_cli.py enable --zone-name example.com --all
 """
 
@@ -113,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     enable_parser = subparsers.add_parser(
         "enable",
         help="Enable one or more Page Rules.",
-        description="Enable Page Rules in a zone by Position or --all.",
+        description="Enable Page Rules in a zone by Position, Rule ID, or --all.",
         epilog=ENABLE_DISABLE_EPILOG,
         formatter_class=HelpFormatter,
     )
@@ -123,7 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     disable_parser = subparsers.add_parser(
         "disable",
         help="Disable one or more Page Rules.",
-        description="Disable Page Rules in a zone by Position or --all.",
+        description="Disable Page Rules in a zone by Position, Rule ID, or --all.",
         epilog=ENABLE_DISABLE_EPILOG,
         formatter_class=HelpFormatter,
     )
@@ -144,6 +150,11 @@ def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
         help="Position shown in the rules listing. Use comma-separated values for multiple positions.",
     )
     parser.add_argument(
+        "--rule-id",
+        default="",
+        help="Page Rule ID. Use comma-separated values for multiple rule IDs.",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         dest="all_rules",
@@ -158,21 +169,47 @@ def require_value(value: str, message: str) -> str:
     return normalized
 
 
-def make_client(api_token: str) -> httpx.Client:
-    return httpx.Client(
-        base_url=API_BASE,
+class CloudflareClient:
+    def __init__(self, api_token: str) -> None:
+        self.api_token = api_token
+
+
+def api_request(
+    client: CloudflareClient,
+    method: str,
+    path: str,
+    params: Optional[dict[str, Any]] = None,
+    body: Optional[dict[str, Any]] = None,
+) -> Any:
+    url = f"{API_BASE}{path}"
+    if params:
+        filtered = {key: value for key, value in params.items() if value not in (None, "")}
+        if filtered:
+            url = f"{url}?{urllib.parse.urlencode(filtered, doseq=True)}"
+
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+
+    request = urllib.request.Request(
+        url,
+        data=data,
         headers={
-            "Authorization": f"Bearer {api_token}",
+            "Authorization": f"Bearer {client.api_token}",
             "Content-Type": "application/json",
         },
-        timeout=30.0,
+        method=method,
     )
 
+    try:
+        with urllib.request.urlopen(request, timeout=30.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        response_text = exc.read().decode("utf-8", errors="replace")
+        raise CloudflareAPIError(f"HTTP error: {exc.code} {response_text}") from exc
+    except urllib.error.URLError as exc:
+        raise CloudflareAPIError(f"Request error: {exc.reason}") from exc
 
-def api_request(client: httpx.Client, method: str, path: str, **kwargs: Any) -> Any:
-    response = client.request(method, path, **kwargs)
-    response.raise_for_status()
-    payload = response.json()
     if not payload.get("success"):
         errors = payload.get("errors") or []
         details = "; ".join(
@@ -183,7 +220,7 @@ def api_request(client: httpx.Client, method: str, path: str, **kwargs: Any) -> 
     return payload.get("result")
 
 
-def list_zones(client: httpx.Client) -> list[dict[str, Any]]:
+def list_zones(client: CloudflareClient) -> list[dict[str, Any]]:
     zones: list[dict[str, Any]] = []
     page = 1
     while True:
@@ -208,7 +245,7 @@ def list_zones(client: httpx.Client) -> list[dict[str, Any]]:
     return zones
 
 
-def resolve_zone(client: httpx.Client, zone_name: str) -> dict[str, Any]:
+def resolve_zone(client: CloudflareClient, zone_name: str) -> dict[str, Any]:
     name = require_value(zone_name, "Provide --zone-name.")
     zones = list_zones(client)
     matches = [zone for zone in zones if (zone.get("name") or "").strip().lower() == name.lower()]
@@ -220,7 +257,7 @@ def resolve_zone(client: httpx.Client, zone_name: str) -> dict[str, Any]:
     return {"id": zone["id"], "name": zone["name"]}
 
 
-def list_page_rules(client: httpx.Client, zone_id: str) -> list[dict[str, Any]]:
+def list_page_rules(client: CloudflareClient, zone_id: str) -> list[dict[str, Any]]:
     return api_request(
         client,
         "GET",
@@ -259,15 +296,21 @@ def parse_position_arguments(value: str) -> list[int]:
     return positions
 
 
+def parse_rule_id_arguments(value: str) -> list[str]:
+    return parse_csv_arguments([value])
+
+
 def resolve_rule_selection(
     rules: list[dict[str, Any]],
     positions: str,
+    rule_ids: str,
     all_rules: bool,
 ) -> list[dict[str, Any]]:
     normalized_positions = parse_position_arguments(positions)
-    selectors = sum([bool(normalized_positions), bool(all_rules)])
+    normalized_rule_ids = parse_rule_id_arguments(rule_ids)
+    selectors = sum([bool(normalized_positions), bool(normalized_rule_ids), bool(all_rules)])
     if selectors != 1:
-        raise SystemExit("Provide exactly one of --position or --all.")
+        raise SystemExit("Provide exactly one of --position, --rule-id, or --all.")
 
     if not rules:
         raise SystemExit("No Page Rules were found in the zone.")
@@ -286,6 +329,23 @@ def resolve_rule_selection(
     if all_rules:
         return [with_position(rule) for rule in ordered_rules]
 
+    rules_by_id = {
+        (rule.get("id") or "").strip(): rule
+        for rule in ordered_rules
+        if (rule.get("id") or "").strip()
+    }
+
+    if normalized_rule_ids:
+        unique_rule_ids = list(dict.fromkeys(normalized_rule_ids))
+        invalid_rule_ids = [rule_id for rule_id in unique_rule_ids if rule_id not in rules_by_id]
+        if invalid_rule_ids:
+            raise SystemExit(
+                f"Invalid rule ID(s): {', '.join(invalid_rule_ids)}. "
+                "Use the Rule ID shown in the rules output."
+            )
+        selected_rules = [with_position(rules_by_id[rule_id]) for rule_id in unique_rule_ids]
+        return order_rules_for_display(selected_rules)
+
     unique_positions = list(dict.fromkeys(normalized_positions))
     invalid_positions = [str(position) for position in unique_positions if position <= 0 or position > len(ordered_rules)]
     if invalid_positions:
@@ -297,12 +357,12 @@ def resolve_rule_selection(
     return order_rules_for_display(selected_rules)
 
 
-def set_page_rule_status(client: httpx.Client, zone_id: str, rule_id: str, status: str) -> dict[str, Any]:
+def set_page_rule_status(client: CloudflareClient, zone_id: str, rule_id: str, status: str) -> dict[str, Any]:
     return api_request(
         client,
         "PATCH",
         f"/zones/{zone_id}/pagerules/{rule_id}",
-        json={"status": status},
+        body={"status": status},
     )
 
 
@@ -400,47 +460,45 @@ def main() -> int:
     api_token = require_value(args.api_token, "Provide --api-token or set CLOUDFLARE_API_TOKEN.")
 
     try:
-        with make_client(api_token) as client:
-            if args.command == "zones":
-                print_zones(list_zones(client))
-                return 0
-
-            zone = resolve_zone(client, args.zone_name)
-
-            if args.command == "rules":
-                print(f"Zone: {zone['name']} ({zone['id']})")
-                print_rules(list_page_rules(client, zone["id"]))
-                return 0
-
-            target_status = "active" if args.command == "enable" else "disabled"
-            rules = list_page_rules(client, zone["id"])
-            selected_rules = resolve_rule_selection(
-                rules,
-                args.position,
-                args.all_rules,
-            )
-
-            updated_rules = [
-                set_page_rule_status(client, zone["id"], (rule.get("id") or "").strip(), target_status)
-                for rule in selected_rules
-            ]
-            selected_positions = {
-                (rule.get("id") or "").strip(): rule.get("_display_position")
-                for rule in selected_rules
-            }
-            for updated_rule in updated_rules:
-                updated_rule["_display_position"] = selected_positions.get((updated_rule.get("id") or "").strip())
-
-            print(f"Zone: {zone['name']} ({zone['id']})")
-            if len(updated_rules) == 1:
-                print("Page Rule updated successfully:")
-            else:
-                print(f"Page Rules updated successfully: {len(updated_rules)}")
-            print_rules(updated_rules)
+        client = CloudflareClient(api_token)
+        if args.command == "zones":
+            print_zones(list_zones(client))
             return 0
-    except httpx.HTTPStatusError as exc:
-        print(f"Cloudflare HTTP error: {exc.response.status_code} {exc.response.text}", file=sys.stderr)
-        return 1
+
+        zone = resolve_zone(client, args.zone_name)
+
+        if args.command == "rules":
+            print(f"Zone: {zone['name']} ({zone['id']})")
+            print_rules(list_page_rules(client, zone["id"]))
+            return 0
+
+        target_status = "active" if args.command == "enable" else "disabled"
+        rules = list_page_rules(client, zone["id"])
+        selected_rules = resolve_rule_selection(
+            rules,
+            args.position,
+            args.rule_id,
+            args.all_rules,
+        )
+
+        updated_rules = [
+            set_page_rule_status(client, zone["id"], (rule.get("id") or "").strip(), target_status)
+            for rule in selected_rules
+        ]
+        selected_positions = {
+            (rule.get("id") or "").strip(): rule.get("_display_position")
+            for rule in selected_rules
+        }
+        for updated_rule in updated_rules:
+            updated_rule["_display_position"] = selected_positions.get((updated_rule.get("id") or "").strip())
+
+        print(f"Zone: {zone['name']} ({zone['id']})")
+        if len(updated_rules) == 1:
+            print("Page Rule updated successfully:")
+        else:
+            print(f"Page Rules updated successfully: {len(updated_rules)}")
+        print_rules(updated_rules)
+        return 0
     except CloudflareAPIError as exc:
         print(f"Cloudflare API error: {exc}", file=sys.stderr)
         return 1

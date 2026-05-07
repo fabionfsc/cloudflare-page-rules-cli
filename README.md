@@ -9,36 +9,17 @@ The script can:
 - list zones accessible to the token
 - list `Page Rules` for a zone
 - enable or disable rules by `Position`
+- enable or disable rules by `Rule ID`
 - apply changes to all rules in a zone with `--all`
 - update multiple rules in a single command
 
 ## Requirements
 
 - Python 3
-- `httpx`
 
 ## Installation
 
-On systems where `pip` can install packages normally:
-
-```bash
-python3 -m pip install httpx
-```
-
-On Debian/Ubuntu systems with `externally-managed-environment`, use a virtual environment:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install httpx
-```
-
-If needed:
-
-```bash
-sudo apt update
-sudo apt install python3-venv
-```
+No package install is required for runtime if you already have Python 3 available.
 
 ## Token Permissions
 
@@ -126,6 +107,7 @@ Enable or disable `Page Rules` for a zone.
 For these commands, provide exactly one selection mode:
 
 - `--position`
+- `--rule-id`
 - `--all`
 
 #### Select by `Position`
@@ -137,6 +119,17 @@ python3 page_rules_cli.py enable --zone-name example.com --position 1
 python3 page_rules_cli.py disable --zone-name example.com --position 1
 python3 page_rules_cli.py enable --zone-name example.com --position 1,3
 python3 page_rules_cli.py disable --zone-name example.com --position 1,3
+```
+
+#### Select by `Rule ID`
+
+Rules are selected by the `Rule ID` shown in the `rules` output.
+
+```bash
+python3 page_rules_cli.py enable --zone-name example.com --rule-id RULE_ID
+python3 page_rules_cli.py disable --zone-name example.com --rule-id RULE_ID
+python3 page_rules_cli.py enable --zone-name example.com --rule-id RULE_ID_1,RULE_ID_2
+python3 page_rules_cli.py disable --zone-name example.com --rule-id RULE_ID_1,RULE_ID_2
 ```
 
 #### Select with `--all`
