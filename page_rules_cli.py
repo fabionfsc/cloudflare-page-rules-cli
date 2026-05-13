@@ -24,8 +24,8 @@ HELP_EPILOG = """Examples:
   python3 page_rules_cli.py disable --zone-name example.com --position 1,3
   python3 page_rules_cli.py disable --zone-name example.com --rule-id RULE_ID_1,RULE_ID_2
   python3 page_rules_cli.py disable --zone-name example.com --all
+  python3 page_rules_cli.py enable --batch rules.csv
   python3 page_rules_cli.py disable --batch rules.csv
-  python3 page_rules_cli.py disable --batch rules.csv --all
 
 Credentials:
   - the script accepts --api-token
@@ -40,11 +40,10 @@ RULES_EPILOG = """Examples:
 """
 ENABLE_DISABLE_EPILOG = """Rule selection:
   Without --batch, provide exactly one of --position, --rule-id, or --all.
-  With --batch, --all means apply all valid CSV entries; without --all it runs a dry-run.
+  With --batch, the CSV defines the rule selection.
 
 Batch CSV:
-  The public CSV format uses kebab-case headers:
-  zone-name,rule-id
+  Expected CSV headers: zone-name,rule-id
 
 Examples:
   python3 page_rules_cli.py enable --zone-name example.com --position 1
@@ -52,8 +51,8 @@ Examples:
   python3 page_rules_cli.py enable --zone-name example.com --rule-id RULE_ID
   python3 page_rules_cli.py disable --zone-name example.com --rule-id RULE_ID_1,RULE_ID_2
   python3 page_rules_cli.py enable --zone-name example.com --all
+  python3 page_rules_cli.py enable --batch rules.csv
   python3 page_rules_cli.py disable --batch rules.csv
-  python3 page_rules_cli.py disable --batch rules.csv --all
 """
 
 
@@ -180,7 +179,7 @@ def add_batch_arguments(parser: argparse.ArgumentParser) -> None:
         default="",
         help=(
             "CSV file for batch enable/disable. Expected public headers: zone-name,rule-id. "
-            "Without --all, the command runs a dry-run."
+            "The CSV defines the rule selection."
         ),
     )
 
@@ -593,12 +592,11 @@ def build_batch_plan(
     return plan
 
 
-def print_batch_plan(plan: list[dict[str, Any]], *, execute: bool, target_status: str) -> None:
-    print(f"{'EXECUTE' if execute else 'DRY RUN'} - batch {target_status}")
+def print_batch_result(plan: list[dict[str, Any]], *, target_status: str) -> None:
+    print(f"Batch {target_status}")
     print()
 
     errors = 0
-    planned = 0
     noop = 0
     updated = 0
 
@@ -618,51 +616,40 @@ def print_batch_plan(plan: list[dict[str, Any]], *, execute: bool, target_status
         if not item.get("needs_change"):
             noop += 1
             print(f"  current: {format_status(current_status)}")
-            print("  planned: no change")
+            print("  result: no change")
             print()
             continue
 
-        planned += 1
-        if execute and item.get("updated"):
-            updated += 1
-            print(f"  previous: {format_status(current_status)}")
-            print(f"  updated: {format_status(target_status)}")
-        else:
-            print(f"  current: {format_status(current_status)}")
-            print(f"  planned: {format_status(target_status)}")
+        updated += 1
+        print(f"  previous: {format_status(current_status)}")
+        print(f"  updated: {format_status(target_status)}")
         print()
 
     print("Summary:")
     print(f"  entries: {len(plan)}")
-    print(f"  planned changes: {planned}")
+    print(f"  updated: {updated}")
     print(f"  noop: {noop}")
     print(f"  errors: {errors}")
-    if execute:
-        print(f"  updated: {updated}")
-    elif not errors:
-        print("  run with --all to apply all valid batch entries")
 
 
 def run_batch_command(client: CloudflareClient, args: argparse.Namespace, target_status: str) -> int:
-    if args.zone_name or args.position or args.rule_id:
-        raise SystemExit("With --batch, do not provide --zone-name, --position, or --rule-id.")
+    if args.zone_name or args.position or args.rule_id or args.all_rules:
+        raise SystemExit("With --batch, do not provide --zone-name, --position, --rule-id, or --all.")
 
     batch_rows = parse_batch_csv(args.batch)
     plan = build_batch_plan(client, batch_rows, target_status)
     has_errors = any(item.get("error") for item in plan)
     if has_errors:
-        print_batch_plan(plan, execute=False, target_status=target_status)
+        print_batch_result(plan, target_status=target_status)
         return 1
 
-    execute = bool(args.all_rules)
-    if execute:
-        for item in plan:
-            if not item.get("needs_change"):
-                continue
-            set_page_rule_status(client, item["zone_id"], item["rule_id"], target_status)
-            item["updated"] = True
+    for item in plan:
+        if not item.get("needs_change"):
+            continue
+        set_page_rule_status(client, item["zone_id"], item["rule_id"], target_status)
+        item["updated"] = True
 
-    print_batch_plan(plan, execute=execute, target_status=target_status)
+    print_batch_result(plan, target_status=target_status)
     return 0
 
 
