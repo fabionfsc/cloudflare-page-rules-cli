@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import json
 import os
 import sys
@@ -23,6 +24,8 @@ HELP_EPILOG = """Examples:
   python3 page_rules_cli.py disable --zone-name example.com --position 1,3
   python3 page_rules_cli.py disable --zone-name example.com --rule-id RULE_ID_1,RULE_ID_2
   python3 page_rules_cli.py disable --zone-name example.com --all
+  python3 page_rules_cli.py disable --batch rules.csv
+  python3 page_rules_cli.py disable --batch rules.csv --all
 
 Credentials:
   - the script accepts --api-token
@@ -36,7 +39,12 @@ RULES_EPILOG = """Examples:
   python3 page_rules_cli.py rules --zone-name example.com
 """
 ENABLE_DISABLE_EPILOG = """Rule selection:
-  Provide exactly one of --position, --rule-id, or --all.
+  Without --batch, provide exactly one of --position, --rule-id, or --all.
+  With --batch, --all means apply all valid CSV entries; without --all it runs a dry-run.
+
+Batch CSV:
+  The public CSV format uses kebab-case headers:
+  zone-name,rule-id
 
 Examples:
   python3 page_rules_cli.py enable --zone-name example.com --position 1
@@ -44,6 +52,8 @@ Examples:
   python3 page_rules_cli.py enable --zone-name example.com --rule-id RULE_ID
   python3 page_rules_cli.py disable --zone-name example.com --rule-id RULE_ID_1,RULE_ID_2
   python3 page_rules_cli.py enable --zone-name example.com --all
+  python3 page_rules_cli.py disable --batch rules.csv
+  python3 page_rules_cli.py disable --batch rules.csv --all
 """
 
 
@@ -114,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=RULES_EPILOG,
         formatter_class=HelpFormatter,
     )
-    add_zone_arguments(rules_parser)
+    add_zone_arguments(rules_parser, required=True)
 
     enable_parser = subparsers.add_parser(
         "enable",
@@ -123,8 +133,9 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=ENABLE_DISABLE_EPILOG,
         formatter_class=HelpFormatter,
     )
-    add_zone_arguments(enable_parser)
+    add_zone_arguments(enable_parser, required=False)
     add_rule_selector_arguments(enable_parser)
+    add_batch_arguments(enable_parser)
 
     disable_parser = subparsers.add_parser(
         "disable",
@@ -133,14 +144,15 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=ENABLE_DISABLE_EPILOG,
         formatter_class=HelpFormatter,
     )
-    add_zone_arguments(disable_parser)
+    add_zone_arguments(disable_parser, required=False)
     add_rule_selector_arguments(disable_parser)
+    add_batch_arguments(disable_parser)
 
     return parser
 
 
-def add_zone_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--zone-name", required=True, help="Zone name. Example: example.com")
+def add_zone_arguments(parser: argparse.ArgumentParser, *, required: bool) -> None:
+    parser.add_argument("--zone-name", required=required, default="", help="Zone name. Example: example.com")
 
 
 def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
@@ -159,6 +171,17 @@ def add_rule_selector_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         dest="all_rules",
         help="Apply the change to all Page Rules in the zone.",
+    )
+
+
+def add_batch_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--batch",
+        default="",
+        help=(
+            "CSV file for batch enable/disable. Expected public headers: zone-name,rule-id. "
+            "Without --all, the command runs a dry-run."
+        ),
     )
 
 
@@ -257,6 +280,24 @@ def resolve_zone(client: CloudflareClient, zone_name: str) -> dict[str, Any]:
     return {"id": zone["id"], "name": zone["name"]}
 
 
+def build_zone_lookup(zones: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    lookup: dict[str, dict[str, Any]] = {}
+    duplicates: set[str] = set()
+    for zone in zones:
+        zone_name = (zone.get("name") or "").strip()
+        if not zone_name:
+            continue
+        key = zone_name.lower()
+        if key in lookup:
+            duplicates.add(key)
+        lookup[key] = {"id": zone["id"], "name": zone["name"]}
+
+    if duplicates:
+        duplicate_names = ", ".join(sorted(duplicates))
+        raise SystemExit(f"Duplicate zone names found in accessible zones: {duplicate_names}")
+    return lookup
+
+
 def list_page_rules(client: CloudflareClient, zone_id: str) -> list[dict[str, Any]]:
     return api_request(
         client,
@@ -298,6 +339,52 @@ def parse_position_arguments(value: str) -> list[int]:
 
 def parse_rule_id_arguments(value: str) -> list[str]:
     return parse_csv_arguments([value])
+
+
+def parse_batch_csv(path: str) -> list[dict[str, Any]]:
+    batch_path = Path(require_value(path, "Provide --batch CSV file.")).expanduser()
+    if not batch_path.is_file():
+        raise SystemExit(f"Batch CSV file not found: {batch_path}")
+
+    with batch_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise SystemExit("Batch CSV is empty. Expected header: zone-name,rule-id")
+
+        fieldnames = [field.strip() for field in reader.fieldnames]
+        expected = ["zone-name", "rule-id"]
+        if fieldnames != expected:
+            raise SystemExit(
+                "Invalid batch CSV header. "
+                f"Expected: {','.join(expected)}. "
+                f"Received: {','.join(fieldnames)}."
+            )
+
+        rows: list[dict[str, Any]] = []
+        seen_pairs: set[tuple[str, str]] = set()
+        for row_number, row in enumerate(reader, start=2):
+            if row.get(None):
+                raise SystemExit(f"Invalid batch CSV row {row_number}: expected exactly 2 columns.")
+
+            zone_name = (row.get("zone-name") or "").strip()
+            rule_id = (row.get("rule-id") or "").strip()
+            if not zone_name or not rule_id:
+                raise SystemExit(f"Invalid batch CSV row {row_number}: zone-name and rule-id are required.")
+
+            key = (zone_name.lower(), rule_id)
+            if key in seen_pairs:
+                raise SystemExit(f"Duplicate batch CSV row {row_number}: {zone_name},{rule_id}")
+            seen_pairs.add(key)
+
+            rows.append({
+                "row": row_number,
+                "zone_name": zone_name,
+                "rule_id": rule_id,
+            })
+
+    if not rows:
+        raise SystemExit("Batch CSV has no entries.")
+    return rows
 
 
 def resolve_rule_selection(
@@ -452,6 +539,133 @@ def print_rules(rules: list[dict[str, Any]]) -> None:
         print()
 
 
+def build_batch_plan(
+    client: CloudflareClient,
+    batch_rows: list[dict[str, Any]],
+    target_status: str,
+) -> list[dict[str, Any]]:
+    zone_lookup = build_zone_lookup(list_zones(client))
+    rules_by_zone_id: dict[str, list[dict[str, Any]]] = {}
+    plan: list[dict[str, Any]] = []
+
+    for row in batch_rows:
+        zone_name = row["zone_name"]
+        rule_id = row["rule_id"]
+        zone = zone_lookup.get(zone_name.lower())
+        if zone is None:
+            plan.append({
+                **row,
+                "error": f"Zone '{zone_name}' was not found among the zones accessible to the token.",
+            })
+            continue
+
+        zone_id = zone["id"]
+        if zone_id not in rules_by_zone_id:
+            rules_by_zone_id[zone_id] = list_page_rules(client, zone_id)
+
+        rules_by_id = {
+            (rule.get("id") or "").strip(): rule
+            for rule in rules_by_zone_id[zone_id]
+            if (rule.get("id") or "").strip()
+        }
+        rule = rules_by_id.get(rule_id)
+        if rule is None:
+            plan.append({
+                **row,
+                "zone_id": zone_id,
+                "resolved_zone_name": zone["name"],
+                "error": f"Rule ID '{rule_id}' was not found in zone '{zone['name']}'.",
+            })
+            continue
+
+        current_status = (rule.get("status") or "").strip().lower()
+        plan.append({
+            **row,
+            "zone_id": zone_id,
+            "resolved_zone_name": zone["name"],
+            "rule": rule,
+            "current_status": current_status,
+            "target_status": target_status,
+            "needs_change": current_status != target_status,
+            "error": "",
+        })
+
+    return plan
+
+
+def print_batch_plan(plan: list[dict[str, Any]], *, execute: bool, target_status: str) -> None:
+    print(f"{'EXECUTE' if execute else 'DRY RUN'} - batch {target_status}")
+    print()
+
+    errors = 0
+    planned = 0
+    noop = 0
+    updated = 0
+
+    for item in plan:
+        prefix = "[ERROR]" if item.get("error") else "[OK]"
+        zone_label = item.get("resolved_zone_name") or item.get("zone_name")
+        print(f"{prefix} row {item.get('row')}: {zone_label}")
+        print(f"  rule-id: {item.get('rule_id')}")
+
+        if item.get("error"):
+            errors += 1
+            print(f"  error: {item['error']}")
+            print()
+            continue
+
+        current_status = item.get("current_status") or "-"
+        if not item.get("needs_change"):
+            noop += 1
+            print(f"  current: {format_status(current_status)}")
+            print("  planned: no change")
+            print()
+            continue
+
+        planned += 1
+        if execute and item.get("updated"):
+            updated += 1
+            print(f"  previous: {format_status(current_status)}")
+            print(f"  updated: {format_status(target_status)}")
+        else:
+            print(f"  current: {format_status(current_status)}")
+            print(f"  planned: {format_status(target_status)}")
+        print()
+
+    print("Summary:")
+    print(f"  entries: {len(plan)}")
+    print(f"  planned changes: {planned}")
+    print(f"  noop: {noop}")
+    print(f"  errors: {errors}")
+    if execute:
+        print(f"  updated: {updated}")
+    elif not errors:
+        print("  run with --all to apply all valid batch entries")
+
+
+def run_batch_command(client: CloudflareClient, args: argparse.Namespace, target_status: str) -> int:
+    if args.zone_name or args.position or args.rule_id:
+        raise SystemExit("With --batch, do not provide --zone-name, --position, or --rule-id.")
+
+    batch_rows = parse_batch_csv(args.batch)
+    plan = build_batch_plan(client, batch_rows, target_status)
+    has_errors = any(item.get("error") for item in plan)
+    if has_errors:
+        print_batch_plan(plan, execute=False, target_status=target_status)
+        return 1
+
+    execute = bool(args.all_rules)
+    if execute:
+        for item in plan:
+            if not item.get("needs_change"):
+                continue
+            set_page_rule_status(client, item["zone_id"], item["rule_id"], target_status)
+            item["updated"] = True
+
+    print_batch_plan(plan, execute=execute, target_status=target_status)
+    return 0
+
+
 def main() -> int:
     load_dotenv()
     parser = build_parser()
@@ -465,14 +679,20 @@ def main() -> int:
             print_zones(list_zones(client))
             return 0
 
-        zone = resolve_zone(client, args.zone_name)
-
         if args.command == "rules":
+            zone = resolve_zone(client, args.zone_name)
             print(f"Zone: {zone['name']} ({zone['id']})")
             print_rules(list_page_rules(client, zone["id"]))
             return 0
 
         target_status = "active" if args.command == "enable" else "disabled"
+        if args.batch:
+            return run_batch_command(client, args, target_status)
+
+        if not args.zone_name:
+            raise SystemExit("Provide --zone-name or --batch.")
+
+        zone = resolve_zone(client, args.zone_name)
         rules = list_page_rules(client, zone["id"])
         selected_rules = resolve_rule_selection(
             rules,

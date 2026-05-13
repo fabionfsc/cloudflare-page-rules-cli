@@ -12,6 +12,7 @@ The script can:
 - enable or disable rules by `Rule ID`
 - apply changes to all rules in a zone with `--all`
 - update multiple rules in a single command
+- run batch enable/disable from a CSV file
 
 ## Requirements
 
@@ -109,6 +110,7 @@ For these commands, provide exactly one selection mode:
 - `--position`
 - `--rule-id`
 - `--all`
+- `--batch`
 
 #### Select by `Position`
 
@@ -140,6 +142,50 @@ Applies the change to all `Page Rules` in the zone.
 python3 page_rules_cli.py enable --zone-name example.com --all
 python3 page_rules_cli.py disable --zone-name example.com --all
 ```
+
+#### Batch CSV
+
+Batch mode applies `enable` or `disable` to the rule IDs listed in a CSV file.
+
+The public CLI/CSV format uses kebab-case with `-`. Internally, Python variables use snake_case with `_`.
+
+CSV format:
+
+```csv
+zone-name,rule-id
+example.com,884eeac1759a01ee9434b29f4242a65f
+example.net,9c8a1c48d719f5d98680037a0e8bdb55
+```
+
+Required headers:
+
+- `zone-name`
+- `rule-id`
+
+Dry-run is the default:
+
+```bash
+python3 page_rules_cli.py disable --batch rules.csv
+python3 page_rules_cli.py enable --batch rules.csv
+```
+
+To apply all valid entries in the CSV, add `--all`:
+
+```bash
+python3 page_rules_cli.py disable --batch rules.csv --all
+python3 page_rules_cli.py enable --batch rules.csv --all
+```
+
+In batch mode, `--all` means "apply all valid entries from the CSV". Outside batch mode, `--all` keeps its original meaning: apply the change to all `Page Rules` in one zone.
+
+Batch safety behavior:
+
+- the CSV header must be exactly `zone-name,rule-id`
+- `zone-name` is resolved against zones accessible to the token
+- `rule-id` must exist inside the matching zone
+- duplicate `zone-name,rule-id` rows are rejected
+- if any row has an error, nothing is changed
+- without `--all`, no changes are made
 
 ## Output
 
